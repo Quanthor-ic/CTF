@@ -147,6 +147,8 @@ After finishing the implementation in python I tested it and of course it didn't
 So I did what every good CTF player would do in this situation: try to bruteforce the missing 4 bytes! But python is too slow to make a bruteforce on 32 bits, so I had to reimplement everyhting in C. And of course that didn't worked too.
 
 
+![retarded](./img/retarded.gif)
+
 
 ### Recovering the secret input: second try
 
@@ -165,11 +167,11 @@ The code gets the 16 bytes of memory pointed by r2 (the encrypted input), the 16
 if (pc == 0x1fe8) {
 
   char flag[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  printf("%i\n", sizeof(flag));
 
   u32 r2 = arm_Reg[2].I;
   u32 r12 = arm_Reg[12].I;
   u32 x, x_r2, x_r12;
+
   for (int i = 0; i < 4; i++) {
     x_r2 = *(u32*)&aica_ram[(r2 + i*4) & ARAM_MASK];
     x_r12 = *(u32*)&aica_ram[(r12 + i*4) & ARAM_MASK];
