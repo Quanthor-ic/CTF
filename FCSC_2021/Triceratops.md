@@ -72,6 +72,14 @@ At that point, I knew that I some sort of algorithm wad hidden inside these stra
 
 While I was trying to address the problem with a different point of view, I noticed that the 2 grids were strongly linked together, because at any point in time, two cells at the same position couldn't have the same value, and each operations applied on the grids had the same impact on both of them.
 
-That when I got the key idea to solve the challenge: the grids shouldn't be solved separately but together by adding them together (modulo 3).
+That when I got the key idea to solve the challenge: the grids shouldn't be solved separately but together by adding them (modulo 3).
 
 ![Solving both grids](./img/solving_both_grids.png)
+
+We now have to work with a single grid, containing only 0, 1 or 2, which we will now referer to as 3 colors to make things clearer.
+
+Using this approach, we can now fully understand the behaviour of the program:
+- The function at address *0x4011f2* is used to check that only adjacent cells of different colors are selected.
+- The operation performed on the selected cells during function *0x4015f3* changes the color of these cells to the third color.
+
+Using the previous example, this would be a valid operation:
