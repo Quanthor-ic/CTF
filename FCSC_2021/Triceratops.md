@@ -101,3 +101,199 @@ To solve this problem, I came up with an algorithm that is bit naive, but works 
 Here is an example of the application of the algorithm:
 
 ![Algorithm example](./img/triceratops_algorithm.png)
+
+Finally, we can implement the algorithm in python to create a keygen, and then make it interact with the server to get the flag.
+
+Here is my complete code for the keygen:
+
+```Python
+#! /usr/bin/env python3
+
+from Crypto.Hash import SHA256
+
+
+
+def init_grid(username, is_child):
+    grid = [[0 for _ in range(16)] for _ in range(16)]
+
+    i = 0
+    n = 0
+    while (True):
+        sha = SHA256.new()
+        b = int.to_bytes(is_child, 1, "little") + int.to_bytes(n, 1, "little") + username.encode()
+        sha.update(b)
+        h = sha.digest()
+        print(is_child)
+        print(h.hex())
+
+        for j in range(0x1f, -1, -1):
+            for k in range(4):
+                x = (h[j] >> (k*2)) & 3
+                if (x != 3):
+                    grid[i//16][i%16] = x
+                    i += 1
+                    if (i == 0x100):
+                        break
+            if (i == 0x100):
+                    break
+        if (i == 0x100):
+                break
+
+        n += 1
+
+    return grid
+
+
+
+
+def find_next_diff(grid, offset, val):
+    n = offset
+    while (n < 256):
+        x = grid[n//16][n%16]
+        if (x != val):
+            return n
+        n += 1
+    return n
+
+def find_previous(grid, offset, val):
+    n = offset
+    while (n >= 0):
+        x = grid[n//16][n%16]
+        if (x == val):
+            return n
+        n -= 1
+    return n
+
+def select_shift(grid, index):
+    i = index//16
+    j = index%16
+    x = grid[i][j]
+
+    if (j < 15):
+        if (grid[i][j+1] != x):
+            return index + 1
+    if (i < 15):
+        if (grid[i+1][j] != x):
+            return index + 16
+
+    return 256
+
+def shift(grid, index, index_shift):
+    i = index//16
+    j = index%16
+    x = grid[i][j]
+    i_s = index_shift//16
+    j_s = index_shift%16
+    y = grid[i_s][j_s]
+
+    assert x != y
+    z = 3 - x - y
+    grid[i][j] = z
+    grid[i_s][j_s] = z
+
+def check_grid(grid, val):
+    for i in range(16):
+        for j in range(16):
+            if (grid[i][j] != val):
+                return False
+    return True
+
+def check_edge_case(grid, val):
+    for i in range(16):
+        for j in range(16):
+            if (i == 14 and j == 15):
+                if (grid[i][j] == val):
+                    return False
+            elif (i == 15 and j == 13):
+                if (grid[i][j] == val):
+                    return False
+            else:
+                if (grid[i][j] != val):
+                    return False
+    return True
+
+
+
+
+
+username = input("Username: ")
+
+parent_grid = init_grid(username, 0)
+child_grid = init_grid(username, 1)
+
+for i in range(16):
+    for j in range(16):
+        if (parent_grid[i][j] == child_grid[i][j]):
+            parent_grid[i][j] = (parent_grid[i][j] + 1) % 3
+            child_grid[i][j] = (child_grid[i][j] + 2) % 3
+
+print(parent_grid)
+print(child_grid)
+
+master_grid = [[0 for _ in range(16)] for _ in range(16)]
+
+N = 0
+for i in range(16):
+    for j in range(16):
+        master_grid[i][j] = (parent_grid[i][j] + child_grid[i][j]) % 3
+        N += master_grid[i][j]
+N %= 3
+
+serial_1 = ""
+serial_2 = ""
+serial_3 = ""
+
+while (True):
+    if (check_edge_case(master_grid, N)):
+        # check for edge case and solve it manually
+        print("=====")
+        print("Edge case found, solving manually...")
+        shift(master_grid, 253, 254)
+        shift(master_grid, 254, 255)
+        shift(master_grid, 253, 254)
+        shift(master_grid, 239, 255)
+        serial_1 += "pppo"
+        serial_2 += "nonp"
+        serial_3 += "AAAB"
+        break
+    index = find_next_diff(master_grid, 0, N)
+    while(True):
+        if (index == 256):
+            break
+        index_shift = select_shift(master_grid, index)
+        if (index_shift != 256):
+            break
+        index = find_next_diff(master_grid, index+1, N)
+
+    if (index == 256):
+        if (check_grid(master_grid, N)):
+            break
+        else:
+            last_N = find_previous(master_grid, 255, N)
+            while(True):
+                if (last_N == 0):
+                    print("Error: no valid last N found")
+                    exit(1)
+                last_shift = select_shift(master_grid, last_N)
+                if (last_shift != 256):
+                    index = last_N
+                    index_shift = last_shift
+                    break
+                last_N = find_previous(master_grid, last_N-1, N)
+
+    serial_1 += chr(0x61 + index//16)
+    serial_2 += chr(0x61 + index%16)
+    if (index_shift == index + 1):
+        serial_3 += "A"
+    else:
+        serial_3 += "B"
+
+    shift(master_grid, index, index_shift)
+    print("=====")
+    for l in master_grid:
+        print(l)
+
+serial = serial_1 + serial_2 + serial_3
+print("=====")
+print("Serial: " + serial)
+```
