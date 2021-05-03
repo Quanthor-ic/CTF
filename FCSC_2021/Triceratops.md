@@ -83,3 +83,21 @@ Using this approach, we can now fully understand the behaviour of the program:
 - The operation performed on the selected cells during function *0x4015f3* changes the color of these cells to the third color.
 
 Using the previous example, this would be a valid operation:
+
+![Color operation](./img/triceratops_color_operation.png)
+
+So now the underlying problem can be reformulated in a simple way:
+- We start with a grid randomly filled with 3 colors;
+- We can combine 2 adjacent cells of different colors to change them to the third color;
+- There must be only one color left on the grid in the end.
+
+To solve this problem, I came up with an algorithm that is bit naive, but works really well:
+1. Determine which value (or color) should be left in the grid at the end. To do so, just add all the initial values of the cells (modulo 3).
+2. Starting at the top left of the grid, find the first cell which is not at the correct value and which can be combined with an invalid right or below neighbour, and then make a combination;
+3. Repeat step 2. until the grid is correctly filled or until you get stuck with no invalid cell to combine;
+4. If the grid is stuck, then we have to combine a valid cell with an invalid one. Starting from the opposite corner, find the first invali cell that can be combined with a valid one one the left or on the top. After that, go back to step 2.
+5. There is an edge case where the algorithm loops on the 4 cells in the last corner, so we have to detect it and solve it by hand.
+
+Here is an example of the application of the algorithm:
+
+![Algorithm example](./img/triceratops_algorithm.png)
