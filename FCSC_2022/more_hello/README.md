@@ -19,6 +19,7 @@ This is an `aarch64` ELF file so opening with Ghidra should not be a problem. Ho
 Looking again at the description of the challenge, I decided to take a look at the talk which was mentionned:
 
 https://i.blackhat.com/USA21/Wednesday-Handouts/us-21-Security-Analysis-Of-Cheri-Isa.pdf
+
 https://www.youtube.com/watch?v=0lKeSNHGIq4
 
 
@@ -27,17 +28,17 @@ https://www.youtube.com/watch?v=0lKeSNHGIq4
 
 In this talk, Nicolas Joly and Saar Amar analyse the security of the CHERI instruction set.
 
-CHERI is an extension of some existing instructions sets architectures, such as aarch64, MIPS and RISC-V proposed by researchers at the University of Cambridge.
+CHERI is an extension of some existing instructions sets architectures, such as aarch64, MIPS and RISC-V proposed by researchers at the University of Cambridge (https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/).
 
-https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/
+It defines additional instructions to keep track of information (called capabilities) about the pointers. The capabilities specify the bounds of the memory referenced by the pointer and if it can be read / written / executed. The capabilities are manipulated using additional 128 bits registers (cXX for aarch64), which contain the original value of the pointer and the associated information.
 
-It defines additional instructions to keep track of information (called capabilities) about the pointers. The capabilities specify the bounds of the memory referenced by the pointer and if can be read / written / executed. The capabilities are manipulated using additional 128 registers (cXX for aarch64), which contain the original value of the pointer and the associated information.
+Here is an example of such capabilities (we can see the pointer value and the associated permissions and bounds on the right):
 
 ![Example c registers](./img/example_regs.png)
 
 The aarch64 version of CHERI is called Morello (hence the name of the challenge).
 
-With this information in mind, we can assume that the binary of the challenge is not written in standard aarch64 but in CHERI extended aarch64 (morello). To analys it further, we are going to need a specific toolchain for this architecture.
+With this information in mind, we can assume that the binary of the challenge is not written in standard aarch64 but in CHERI extended aarch64 (morello). To analyse it further, we are going to need a specific toolchain for this architecture.
 
 
 
@@ -52,8 +53,6 @@ The readme is very detailled and explains what we need to do. We can run `./cher
 - a qemu-system-morello binary, to emulate our binary on a FreeBSD system running on morello;
 - all the required file for the emulator: a FreeBSD kernel, a filesystem, ...;
 - a gdb client for morello to attach to the gdbserver on the qemu system.
-
-This project is really well made as it only requires you to run one or two commands to obtain all the requiried tools (it is even better if you read the readme before starting to complie with random arguments until you realise it was not the correct target hours later...).
 
 
 
@@ -71,22 +70,22 @@ In the `.plt` section at the end of the disassembly, we can determine the calls 
 
 ### Debugging
 
-To understand the `main` function, I decided to try to debug the program using the `qemu-system-morello` and the asscociated `gdb`. To place the binary in the filesystem of the emulator, it must be copied inside the `cheri/extra-files/` directory, and then we can run the command `./cheribuild.py run-morello-purecap -d` to generate the new filesystem and run the emulator.
+To fully understand the `main` function, I decided to try to debug the program using the `qemu-system-morello` and the asscociated `gdb`. To place the binary in the filesystem of the emulator, it must be copied inside the `cheri/extra-files/` directory, and then we can run the command `./cheribuild.py run-morello-purecap -d` to generate the new filesystem and run the emulator.
 
-When we run the binary in qemu, it crashes with an `In-address space security exception`. This exception occurs because the capability of a pointer was not respected in morello. Using gdb, we can see that this crash occurs inside the call to `trtoul` because the argument passed the function is `NULL`.
+When we run the binary in qemu, it crashes with an `In-address space security exception`. This exception occurs because the capability of a pointer was not respected in morello. Using gdb, we can see that this crash occurs inside the call to `strtoul` because the argument passed to the function is `NULL`.
 
 Because there was no imported function to get an input from the user and because the final printed string was `"FLAG: FCSC{CHERI_COCO_MORELLO_%x}"`, I suspected that the binary required an integer as an argument to run correctly. I tested this assumption by supplying an integer argument to the program, and with gdb I confirmed that it was indeed used as an argument for the call to strtoul (the integer must be in hexadecimal format).
 
 ![Meme](./img/meme.jpg)
 
-Once we supply a valid argument, the excution of the program continues past the call to strtoul but another crash of the same type occurs later in the `main` funtion, before the print of the flag is triggered. I assumed that this crash was intentional, but we will come back to it a bit later.
+Once we supply a valid argument, the excution of the program continues past the call to strtoul but another crash of the same type occurs later in the `main` function, before the print of the flag is triggered. I assumed that this crash was intentional, but we will come back to it a bit later.
 
 
 
 ### Main function and check
 
 The workflow of the `main` function is divided in the following steps:
-1. Initialize some pointers and there capabilites on the stack;
+1. Initialize some pointers and their capabilites on the stack;
 2. Retrieve the argument and convert it to an integer with `strtoul`;
 3. Call 3 functions at `0x111e0`, `0x112a0` and `0x113d0` to process the argument;
 4. Perform a loop that may crash at some point;
@@ -114,45 +113,44 @@ Let's investigate the crash further. It occurs at line `0x11b88` in this code:
 11bac: ed ff ff 17  	b	0x11b60 <.text+0x1150>
 ```
 
-This code is a loop which is excuted 13 times, with a counter stored in `[csp, #48]`. At each iteration i:
-- c0 is loaded from `[csp, #16]` and c1 from `[csp, #0]`;
-- x8 takes the value at position i in c1 (x8 = c1[i]);
-- w1 takes the value at position x8 in c0 (w1 = c0[x8]);
+This code is a loop which is excuted 13 times, with a counter stored in `[csp, #48]`. At each iteration `i`:
+- `c0` is loaded from `[csp, #16]` and `c1` from `[csp, #0]`;
+- `x8` takes the value at position `i` in `c1` (`x8 = c1[i]`);
+- `w1` takes the value at position `x8` in `c0` (`w1 = c0[x8]`);
 
-Looking at c0 and c1 in gdb, we obtain the folloing result:
+Looking at `c0` and `c1` in gdb, we obtain the following result:
 
 ![c0 and c1 registers](./img/c0_c1.png)
 
-In the loop, c1 points to buffer wich contents depends on the operations performed on the argument of the program. We can see from gdb that this buffer has a size of 0x20 bytes, defined by a morello capability which was set earlier.
+In the loop, `c1` points to a buffer which contents depends on the operations performed on the argument of the program. We can see from gdb that this buffer has a size of 0x20 bytes, defined by a morello capability which was set earlier.
 
-The c0 buffer is empty and has a size of 42 defined in its capability (which was also set earlier). So if x8 is greater than 42 at line `0x11b88`, a `In-address space security exception` will be raised because the program is trying to access data outside of the bounds set by the capabilty of c0.
+The `c0` buffer is empty and has a size of 42 defined in its capability (which was also set earlier). So if `x8` is greater than 42 at line `0x11b88`, an `In-address space security exception` will be raised because the program is trying to access data outside of the bounds set by the capabilty of c0.
 
-This means that the first 13 bytes of c1 must be lower than 42 in order to avoid a crash and reach the print flag statement. This loop is used as a way to check the argument of the program an crash it if the input is invalid.
+This means that the first 13 bytes of `c1` must be lower than 42 in order to avoid a crash and reach the print flag statement. This loop is used as a way to check the argument of the program an crash it if the input is invalid.
 
 
 
 ### Hashing algorithm
 
-Now we need to understand the operations performed on the input in order to find an argument that does not triggers the crashes during the check loop.
+Now we need to understand the operations performed on the input in order to find an argument that does not trigger the crashes during the check loop.
 
-Looking inside the first function at `0x111e0`, we can notice some very specific constants, starting with `58983 = 0xe667` and `44677 = 0xae85`. These are some constants used in the initialization of a SHA256 algorithm. From that point, we can assume that the 2 functions left correspond to the next step of the hashing algorithm, so we have:
+Looking inside the first function at `0x111e0`, we can notice some very specific constants, starting with `58983 = 0xe667` and `44677 = 0xae85`. These are some constants used in the initialization of a SHA256 algorithm. From that point, we can assume that the 2 functions left correspond to the next step of the hashing algorithm, so we would have:
 - `0x111e0` = `SHA256_init()`
 - `0x112a0` = `SHA256_update()`
 - `0x113d0` = `SHA256_digest()`
 
-Using gdb, we can find that the integer argument is passed as 4 bytes to the `SHA256_update` function. We can confirm our assumption by inputing a chosen integer and checking that the result of `SHA256_digest` is indeed the SHA256 of our integer as 4 bytes.
+Using gdb, we can find that the integer argument is passed as 4 bytes to the `SHA256_update` function. We can confirm our assumptions by inputing a chosen integer and checking that the result of `SHA256_digest` is indeed the SHA256 of our integer as 4 bytes.
 
 
 
 ### Finding the good input
 
-To sum up our analisys, the progam takes an integer as an argument, then hashes the 4 bytes of this integer using the SHA256 algorithm, and finally checks that the 13 bytes of the hash are lower than 42, otherwise it crashes.
+To sum up our analysis, the progam takes an integer as an argument (hexsdecimal), then hashes the 4 bytes of this integer using the SHA256 algorithm, and finally checks that the first 13 bytes of the hash are lower than 42, otherwise it crashes.
 
 In order to find such an integer, I created a C program to bruteforce the SHA256 of all the 32 bits integers (`hash_bruteforce.c`). The implementation of SHA256 comes from https://github.com/B-Con/crypto-algorithms.
 
 Thanks to this program, we obtain the correct integer: `0x2718d310`.
 
 We can confirm it works by runnning the binary:
-
 
 ![Flag](./img/flag.png)
